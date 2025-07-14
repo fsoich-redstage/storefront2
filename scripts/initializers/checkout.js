@@ -44,15 +44,15 @@ await initializeDropin(async () => {
           console.warn('[checkout.js] ⚠️ No shipping addresses present');
         }
 
+        // 💥 FIXED: return default values to avoid breaking the drop-in
         return {
-          availablePaymentMethods: data?.available_payment_methods,
-          selectedPaymentMethod: data?.selected_payment_method,
+          availablePaymentMethods: data?.available_payment_methods || [],
+          selectedPaymentMethod: data?.selected_payment_method || null,
         };
       },
     },
   };
 
-  // Eventos
   events.on('checkout/initialized', (payload) => {
     console.log('[checkout.js] ✅ Event: checkout/initialized →', payload);
   }, { eager: true });
@@ -81,7 +81,7 @@ await initializeDropin(async () => {
     console.log('[checkout.js] 🔁 Event: checkout/values →', payload);
   }, { eager: true });
 
-  // Extra: mostrar storefrontInstance si está
+  // Extra: log de cart desde window.__storefrontInstance__
   setTimeout(() => {
     if (window?.__storefrontInstance__) {
       console.log('[checkout.js] 🧠 window.__storefrontInstance__:', window.__storefrontInstance__);
@@ -91,10 +91,10 @@ await initializeDropin(async () => {
           console.log('[checkout.js] 🆔 Cart ID from __storefrontInstance__:', internalCartId);
         }
       } catch (e) {
-        console.warn('[checkout.js] ❌ No se pudo acceder al cart desde __storefrontInstance__');
+        console.warn('[checkout.js] ❌ Error accediendo al cart desde __storefrontInstance__');
       }
     } else {
-      console.warn('[checkout.js] ❌ window.__storefrontInstance__ no está disponible aún');
+      console.warn('[checkout.js] ❌ window.__storefrontInstance__ no disponible');
     }
   }, 2000);
 
