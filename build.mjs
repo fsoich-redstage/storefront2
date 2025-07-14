@@ -1,98 +1,105 @@
-import { overrideGQLOperations } from '@dropins/build-tools/gql-extend.js';
+import { getHeaders } from '@dropins/tools/lib/aem/configs.js';
+import { initializers } from '@dropins/tools/initializer.js';
+import { initialize, setFetchGraphQlHeaders } from '@dropins/storefront-checkout/api.js';
+import { initializeDropin } from './index.js';
+import { fetchPlaceholders } from '../commerce.js';
+import { events } from '@dropins/tools/event-bus.js';
 
-overrideGQLOperations([
-  // ACCS does not have Downloadable Items
-  {
-    npm: '@dropins/storefront-cart',
-    skipFragments: ['DOWNLOADABLE_CART_ITEMS_FRAGMENT'],
-    operations: [],
-  },
-  {
-    npm: '@dropins/storefront-order',
-    skipFragments: ['DOWNLOADABLE_ORDER_ITEMS_FRAGMENT'],
-    operations: [],
-  },
-  {
+console.log('[checkout.js] 🚀 Start Drop-in init...');
 
-    npm: '@dropins/storefront-checkout',
+await initializeDropin(async () => {
+  const headers = getHeaders('checkout');
+  console.log('[checkout.js] 🧠 GraphQL Headers:', headers);
+  setFetchGraphQlHeaders((prev) => ({ ...prev, ...headers }));
 
-    operations: [
+  const labels = await fetchPlaceholders('placeholders/checkout.json');
+  console.log('[checkout.js] 🏷️ Labels:', labels);
 
-      `
+  const langDefinitions = {
+    default: {
+      ...labels,
+    },
+  };
 
-  fragment CHECKOUT_DATA_FRAGMENT on Cart {
+  const models = {
+    CartModel: {
+      transformer: (data) => {
+        console.log('[checkout.js] 🛒 CartModel input:', data);
 
-    available_payment_methods {
-
-      code
-
-      title
-
-      oope_payment_method_config {
-
-        backend_integration_url
-
-        custom_config {
-
-          ... on CustomConfigKeyValue {
-
-              key
-
-              value
-
-          }
-
+        if (data?.id) {
+          console.log(`[checkout.js] 🆔 Cart ID: ${data.id}`);
         }
 
-      }
+        if (data?.shipping_addresses?.length > 0) {
+          data.shipping_addresses.forEach((address, index) => {
+            console.log(`[checkout.js] 📦 Shipping Address [${index}]:`, address);
 
-    }
-
-    selected_payment_method {
-
-      code
-
-      title
-
-      oope_payment_method_config {
-
-        backend_integration_url
-
-        custom_config {
-
-          ... on CustomConfigKeyValue {
-
-              key
-
-              value
-
-          }
-
+            if (address.available_shipping_methods?.length > 0) {
+              console.log(`[checkout.js] 🚚 Available Shipping Methods [${index}]:`, address.available_shipping_methods);
+            } else {
+              console.warn(`[checkout.js] ⚠️ No shipping methods found in address [${index}]`);
+            }
+          });
+        } else {
+          console.warn('[checkout.js] ⚠️ No shipping addresses present');
         }
 
-      }
+        return {
+          availablePaymentMethods: data?.available_payment_methods,
+          selectedPaymentMethod: data?.selected_payment_method,
+        };
+      },
+    },
+  };
 
+  // Eventos
+  events.on('checkout/initialized', (payload) => {
+    console.log('[checkout.js] ✅ Event: checkout/initialized →', payload);
+  }, { eager: true });
+
+  events.on('cart/data', (payload) => {
+    console.log('[checkout.js] 🧾 Event: cart/data →', payload);
+
+    if (payload?.id) {
+      console.log(`[checkout.js] 🆔 [cart/data] Cart ID: ${payload.id}`);
     }
 
-  }
+    if (payload?.shipping_addresses?.length > 0) {
+      payload.shipping_addresses.forEach((address, index) => {
+        console.log(`[checkout.js] 📬 [cart/data] Shipping Address [${index}]:`, address);
 
-`,
+        if (address.available_shipping_methods?.length > 0) {
+          console.log(`[checkout.js] ✅ [cart/data] Shipping Methods [${index}]:`, address.available_shipping_methods);
+        } else {
+          console.warn(`[checkout.js] ⚠️ [cart/data] No shipping methods found [${index}]`);
+        }
+      });
+    }
+  }, { eager: true });
 
-    ],
+  events.on('checkout/values', (payload) => {
+    console.log('[checkout.js] 🔁 Event: checkout/values →', payload);
+  }, { eager: true });
 
-  },
-  // {
-  //   npm: '@dropins/storefront-checkout',
-  //   operations: [],
-  // },
-  // {
-  //   npm: '@dropins/storefront-pdp',
-  //   operations: [
-  //     `
-  //     fragment PRODUCT_FRAGMENT on ProductView {
-  //       lowStock
-  //     }
-  //     `,
-  //   ],
-  // },
-]);
+  // Extra: mostrar storefrontInstance si está
+  setTimeout(() => {
+    if (window?.__storefrontInstance__) {
+      console.log('[checkout.js] 🧠 window.__storefrontInstance__:', window.__storefrontInstance__);
+      try {
+        const internalCartId = window.__storefrontInstance__?.cart?.state?.id;
+        if (internalCartId) {
+          console.log('[checkout.js] 🆔 Cart ID from __storefrontInstance__:', internalCartId);
+        }
+      } catch (e) {
+        console.warn('[checkout.js] ❌ No se pudo acceder al cart desde __storefrontInstance__');
+      }
+    } else {
+      console.warn('[checkout.js] ❌ window.__storefrontInstance__ no está disponible aún');
+    }
+  }, 2000);
+
+  console.log('[checkout.js] 🧱 Mounting Drop-in...');
+  return initializers.mountImmediately(initialize, { langDefinitions, models });
+});
+
+console.log('[checkout.js] ✅ Drop-in initialization complete.');
